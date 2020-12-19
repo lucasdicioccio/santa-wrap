@@ -2,11 +2,15 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE RecordWildCards #-}
 module Main where
 
 import qualified Data.ByteString.Lazy.Char8 as ByteString
 import GHC.Generics (Generic)
 import Data.Aeson (FromJSON(..), ToJSON(..), eitherDecode')
+import Data.Hashable (Hashable)
 import Data.Text (Text)
 import Data.Foldable (traverse_)
 import qualified Data.Text as Text
@@ -14,6 +18,7 @@ import qualified Data.List as List
 import System.Environment (getArgs)
 
 import Codec.Picture
+import Process.Minizinc
 
 type Length = Int
 type X = Int
@@ -142,16 +147,81 @@ linearLayout wrappings = Layout $ List.zipWith (\w (x,y) -> Positioned x y w) wr
     placeToTheLeft :: (X, Y) -> Wrapping -> (X, Y)
     placeToTheLeft (x,y) w = (x + extentX w, 0)
 
+newtype ShapeIdx = ShapeIdx Int
+  deriving stock Show
+  deriving stock Eq
+  deriving newtype Hashable
+  deriving newtype ToJSON
+newtype BlockIdx = BlockIdx Int
+  deriving stock Show
+  deriving newtype Hashable
+  deriving newtype ToJSON
+
+data MinizincSet a = MinizincSet { set :: [ a ] }
+  deriving (Show, Generic)
+instance Hashable a => Hashable (MinizincSet a)
+instance ToJSON a => ToJSON (MinizincSet a)
+
+data Input = Input {
+    nBlocks :: Int
+  , rect_sizes :: [[Int]]
+  , rect_offs :: [[Int]]
+  , nShapes :: Int
+  , shapes :: [ MinizincSet BlockIdx ]
+  , nObjs :: Int
+  , object_shapes :: [ ShapeIdx ]
+  } deriving (Show, Generic)
+instance Hashable Input
+instance ToJSON Input
+
+data Output = Output {
+    coordinates :: [ (X, Y) ]
+  }
+  deriving (Show, Generic)
+instance FromJSON Output
+
+convertInput :: [ Wrapping ] -> (Input, Output -> Layout)
+convertInput wrappings = (Input {..}, layoutOutput)
+  where
+    nBlocks = length indexedRects
+    nShapes = length wrappings
+
+    -- flatten all rectangles from all wrapping, add some indices
+    indexedWrappings :: [(ShapeIdx, Wrapping)]
+    indexedWrappings = zip (fmap ShapeIdx [1..]) wrappings
+
+    flattenedWrappings :: [(ShapeIdx, Wrapping)]
+    flattenedWrappings = mconcat [ replicate (quantity w) (shapeIdx, w) | (shapeIdx, w) <- indexedWrappings ]
+
+    object_shapes = fmap fst flattenedWrappings
+    nObjs = length flattenedWrappings
+
+    indexedRects :: [(ShapeIdx, BlockIdx, Rectangle)]
+    indexedRects = zipWith (\blockIdx (shapeIdx, r) ->  (shapeIdx, blockIdx, r))
+      (fmap BlockIdx [ 1.. ])
+      [ (shapeIdx, r) | (shapeIdx,w) <- indexedWrappings, r <- rectangles w ]
+
+    rect_sizes = [ [rectX r, rectY r]  | (_,_,r) <- indexedRects ]
+    rect_offs = [ [offX r, offY r] | (_,_,r) <- indexedRects ]
+    shapes = [ MinizincSet [ blockIdx | (shapeIdx2,blockIdx,_) <- indexedRects, shapeIdx1 == shapeIdx2 ]
+             | (shapeIdx1,_) <- indexedWrappings
+             ]
+
+    layoutOutput :: Output -> Layout
+    layoutOutput (Output coords) = Layout
+        $ zipWith (\w (x,y) -> Positioned x y w) [w | (_,w) <- flattenedWrappings] coords
+
 main :: IO ()
 main = do
   args <- getArgs
   case args of
      ["parts"] -> mainParts
      ["linear-layout"] -> mainLinearLayout
+     ["minizinc-layout"] -> mainMinizincLayout
      _ -> mainUsage
   where
     mainUsage = do
-      putStrLn "parts | linear-layout"
+      putStrLn "parts | linear-layout | minizinc-layout"
     mainParts = do
       wrappings <- eitherDecode' @[Wrapping] <$> ByteString.getContents
       case wrappings of
@@ -167,3 +237,16 @@ main = do
           let layout = linearLayout $ items
           printLayout layout
       putStrLn "done!"
+    mainMinizincLayout = do
+      wrappings <- eitherDecode' @[Wrapping] <$> ByteString.getContents
+      case wrappings of
+        Left err -> print err
+        Right xs -> do
+           let (input, convertOutput) = convertInput xs
+           let mzn = simpleMiniZinc @Input @Output "models/santa-wrap.mzn" 1000000 Gecode
+           out <- runLastMinizincJSON mzn input
+           case fmap convertOutput out of
+             Nothing -> putStrLn "no layout found!"
+             Just layout -> do
+               printLayout layout
+               putStrLn "done!"

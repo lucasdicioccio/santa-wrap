@@ -25,6 +25,7 @@ executable santa-wrap
                      , text
                      , aeson
                      , bytestring
+                     , hashable
                      , JuicyPixels
                      , minizinc-process
   -- hs-source-dirs:

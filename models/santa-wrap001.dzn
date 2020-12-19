@@ -1,0 +1,19 @@
+nObjs = 10;
+nShapes = 2;
+object_shapes = [1,1,1,1,1,1,2,2,2,2];
+nBlocks = 2;
+
+rect_sizes =
+     [| 1, 1
+      | 2, 2
+      |];
+
+rect_offs =
+     [| 0, 0
+      | 0, 0
+      |];
+
+shapes =
+  [ {1}
+  , {2}
+  ];
