@@ -1,0 +1,15 @@
+[ {"name": "tolkien-book"
+  ,"quantity": 3
+  ,"rectangles": [ {"rectX": 25, "rectY": 31, "offX": 0, "offY": 0} ]
+  }
+, {"name": "game-cartridge"
+  ,"quantity": 8
+  ,"rectangles": [ {"rectX": 13, "rectY": 18, "offX": 0, "offY": 0} ]
+  }
+, {"name": "sword"
+  ,"quantity": 1
+  ,"rectangles": [ {"rectX": 120, "rectY": 20, "offX": 0, "offY": 10}
+                 , {"rectX": 20, "rectY": 50, "offX": 30, "offY": 0}
+                 ]
+  }
+]
