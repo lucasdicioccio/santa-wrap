@@ -16,6 +16,7 @@ import Data.Foldable (traverse_)
 import qualified Data.Text as Text
 import qualified Data.List as List
 import System.Environment (getArgs)
+import Text.Read (readMaybe)
 
 import Codec.Picture
 import Process.Minizinc
@@ -106,9 +107,9 @@ pixelColor idx
   | idx `mod` 10 == 9 = PixelRGB8 100 100 100
 
 
-printLayout :: Layout -> IO ()
-printLayout layout =
-    writePng "layout.png" $ generateImage pixelRenderer maxX maxY
+printLayout :: FilePath -> Layout -> IO ()
+printLayout path layout =
+    writePng path $ generateImage pixelRenderer maxX maxY
   where
     pixelRenderer :: Int -> Int -> PixelRGB8
     pixelRenderer x y =
@@ -131,12 +132,13 @@ printLayout layout =
                 x1 = scale $ posx + offX rect + rectX rect
                 y0 = scale $ posy + offY rect
                 y1 = scale $ posy + offY rect + rectY rect
-            in  x0 <= x && x < x1 && y0 <= y && y < y1
+            in  (x0 + margin) <= x && x < (x1 - margin) && (y0 + margin) <= y && y < (y1 - margin)
 
     -- bounds and scaling
     maxX = scale $ maximum (0 : [ extentX (item w) + posX w | w <- positionedWrappings layout ])
     maxY = scale $ maximum (0 : [ extentY (item w) + posY w | w <- positionedWrappings layout ])
     scale t = 10 * t
+    margin = 5
 
 linearLayout :: [ Wrapping ] -> Layout
 linearLayout wrappings = Layout $ List.zipWith (\w (x,y) -> Positioned x y w) wrappings xys
@@ -170,6 +172,8 @@ data Input = Input {
   , shapes :: [ MinizincSet BlockIdx ]
   , nObjs :: Int
   , object_shapes :: [ ShapeIdx ]
+  , x_max :: Int
+  , y_max :: Int
   } deriving (Show, Generic)
 instance Hashable Input
 instance ToJSON Input
@@ -180,9 +184,12 @@ data Output = Output {
   deriving (Show, Generic)
 instance FromJSON Output
 
-convertInput :: [ Wrapping ] -> (Input, Output -> Layout)
-convertInput wrappings = (Input {..}, layoutOutput)
+convertInput :: Length -> Length -> [ Wrapping ] -> (Input, Output -> Layout)
+convertInput sizeX sizeY wrappings = (Input {..}, layoutOutput)
   where
+    x_max = sizeX
+    y_max = sizeY
+
     nBlocks = length indexedRects
     nShapes = length wrappings
 
@@ -216,37 +223,40 @@ main = do
   args <- getArgs
   case args of
      ["parts"] -> mainParts
-     ["linear-layout"] -> mainLinearLayout
-     ["minizinc-layout"] -> mainMinizincLayout
+     ["linear-layout", path] -> mainLinearLayout path
+     ["minizinc-layout", path, xsize, ysize ] -> do
+        case (,) <$> readMaybe xsize <*> readMaybe ysize of
+         Just (x,y) -> mainMinizincLayout path x y
+         Nothing -> mainUsage
      _ -> mainUsage
   where
     mainUsage = do
-      putStrLn "parts | linear-layout | minizinc-layout"
+      putStrLn "parts | linear-layout <path> | minizinc-layout <path> <width> <height>"
     mainParts = do
       wrappings <- eitherDecode' @[Wrapping] <$> ByteString.getContents
       case wrappings of
         Left err -> print err
         Right xs -> traverse_ printWrapping xs
       putStrLn "done!"
-    mainLinearLayout = do
+    mainLinearLayout path = do
       wrappings <- eitherDecode' @[Wrapping] <$> ByteString.getContents
       case wrappings of
         Left err -> print err
         Right xs -> do
           let items = mconcat [ replicate (quantity w) w | w <- xs ]
           let layout = linearLayout $ items
-          printLayout layout
+          printLayout path layout
       putStrLn "done!"
-    mainMinizincLayout = do
+    mainMinizincLayout path xsize ysize = do
       wrappings <- eitherDecode' @[Wrapping] <$> ByteString.getContents
       case wrappings of
         Left err -> print err
         Right xs -> do
-           let (input, convertOutput) = convertInput xs
-           let mzn = simpleMiniZinc @Input @Output "models/santa-wrap.mzn" 1000000 Gecode
+           let (input, convertOutput) = convertInput xsize ysize xs
+           let mzn = simpleMiniZinc @Input @Output "models/santa-wrap.mzn" 100000 Chuffed
            out <- runLastMinizincJSON mzn input
            case fmap convertOutput out of
              Nothing -> putStrLn "no layout found!"
              Just layout -> do
-               printLayout layout
+               printLayout path layout
                putStrLn "done!"
