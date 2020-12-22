@@ -1,0 +1,28 @@
+[ {"name": "tolkien-book"
+  ,"colorNum": 0
+  ,"quantity": 3
+  ,"rectangles": [ {"rectX": 25, "rectY": 31, "offX": 0, "offY": 0} ]
+  }
+, {"name": "game-cartridge"
+  ,"colorNum": 1
+  ,"quantity": 16
+  ,"rectangles": [ {"rectX": 13, "rectY": 18, "offX": 0, "offY": 0} ]
+  }
+, {"name": "sword"
+  ,"colorNum": 2
+  ,"quantity": 2
+  ,"rectangles": [ {"rectX": 120, "rectY": 20, "offX": 0, "offY": 10}
+                 , {"rectX": 20, "rectY": 50, "offX": 30, "offY": 0}
+                 ]
+  }
+, {"name": "scarf"
+  ,"colorNum": 3
+  ,"quantity": 4
+  ,"rectangles": [ {"rectX": 34, "rectY": 25, "offX": 0, "offY": 0} ]
+  }
+, {"name": "shoes"
+  ,"colorNum": 4
+  ,"quantity": 1
+  ,"rectangles": [ {"rectX": 70, "rectY": 100, "offX": 0, "offY": 0} ]
+  }
+]
